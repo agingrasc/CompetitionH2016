@@ -6,6 +6,7 @@ from RULEngine.Game.Player import Player
 from RULEngine.Game.Ball import Ball
 from RULEngine.Command import Command
 from RULEngine.Framework import Framework
+import math as m
 
 import sys, time
 
@@ -64,12 +65,14 @@ def getStrategy(main_loop):
                 self.robot_states[joueur] = self._idle
 
             def _bouger(self, joueur):
+                #TODO: ajuster la deadzone en fonction du type du goal
                 position = self._convertirPosition(self.robot_goals[joueur])
-
                 player = self.team.players[joueur]
                 dist = geometry.get_distance(player.pose.position, position)
                 print(dist)
-                if 0 < dist < 150: # si la distance est exactement 0, la position n'est pas bonne
+                deadzone = 225  #225 est la deadzone nécessaire pour que le robot ne fonce pas dans la balle
+
+                if 0 < dist < deadzone: # si la distance est exactement 0, la position n'est pas bonne
                     self._succeed(joueur)
                 else:
                     orientation = player.pose.orientation
@@ -78,18 +81,46 @@ def getStrategy(main_loop):
                     self._send_command(command)
 
             def _bougerPlusAim(self, joueur):
-                #TODO
-                position = self._convertirPosition(self.robot_goals[joueur])
-
+                #TODO : ajuster la deadzone en fonction du type du goal
+                destination = self._convertirPosition(self.robot_goals[joueur])
+                cible = self._convertirPosition(self.robot_aim[joueur])
+                deadzone = 225  #225 est la deadzone nécessaire pour que le robot ne fonce pas dans la balle
                 player = self.team.players[joueur]
-                dist = geometry.get_distance(player.pose.position, position)
-                if 0 < dist < 100: # si la distance est exactement 0, la position n'est pas bonne
+                dist = geometry.get_distance(player.pose.position, destination)
+                angle = m.fabs(geometry.get_angle(player.pose.position, cible) - player.pose.orientation)  #angle between the robot and the ball
+
+                if(0 < dist <= deadzone and 0 < angle <= 0.09):  #0.087 rad = 5 deg : marge d'erreur de l'orientation
                     self._succeed(joueur)
-                else:
-                    orientation = player.pose.orientation
-                    command = Command.MoveToAndRotate(player, self.team,
-                                                      Pose(position, orientation))
+                elif(dist > deadzone and 0 < angle <= 0.09):
+                    command = Command.MoveTo(player, self.team, destination)
                     self._send_command(command)
+                elif(0 < dist <= deadzone and angle > 0.09):
+                    orientation = geometry.get_angle(player.pose.position, cible)
+                    command = Command.Rotate(player, self.team, orientation)
+                    self._send_command(command)
+                else:
+                    orientation = geometry.get_angle(player.pose.position, cible)
+                    command = Command.MoveToAndRotate(player, self.team, Pose(destination, orientation))
+                    self._send_command(command)
+                """
+                if(dist > deadzone and angle > 0.09):    #0.087 rad = 5 deg : marge d'erreur de l'orientation
+                    print("allo1")
+                    orientation = geometry.get_angle(player.pose.position, cible)
+                    command = Command.MoveToAndRotate(player, self.team, Pose(destination, orientation))
+                    self._send_command(command)
+                elif(dist > deadzone and angle <= 0.09):
+                    print("allo2")
+                    command = Command.MoveTo(player, self.team, destination)
+                    self._send_command(command)
+                elif(dist <= deadzone and angle > 0.09):
+                    print("allo3")
+                    orientation = geometry.get_angle(player.pose.position, cible)
+                    command = Command.Rotate(player, self.team, orientation)
+                    self._send_command(command)
+                else:
+                    print("allo4")
+                    self._succeed(joueur)
+                """
 
             def _idle(self, joueur):
                 player = self.team.players[joueur]
@@ -103,7 +134,7 @@ def getStrategy(main_loop):
                 assert(isinstance(position, (Position, Player, Ball, int)))
                 self.robot_goals[joueur] = position
                 if cible:
-                    self.robot_goals[joueur] = cible
+                    self.robot_aim[joueur] = cible
                     self.robot_states[joueur] = self._bougerPlusAim
                 else:
                     self.robot_states[joueur] = self._bouger
@@ -116,7 +147,8 @@ def getStrategy(main_loop):
                 self._fail(joueur)
 
             def chercher_balle(self, joueur):
-                self._fail(joueur)
+                ballPosition = self.field.ball
+                self.bouger(joueur, ballPosition, cible=self.field.ball)
 
             def positioner_entre_deux_ennemis(self, joueur, enemi1, enemi2):
                 self._fail(joueur)
