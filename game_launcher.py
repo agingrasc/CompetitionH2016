@@ -26,6 +26,7 @@ def getStrategy(main_loop):
                 self.robot_events = [EVENT_SUCCEED for robot in team.players]
                 self.robot_goals = [Position() for robot in team.players] #Position vide. Position visée
                 self.robot_aim = [Position() for robot in team.players] #Position vide. Position visée
+                self.robot_kick_force = [0 for robot in team.players] #Force de kick
 
             def on_start(self):
                 main_loop(self, self.field, self.robot_events, self.team, self.opponent_team)
@@ -49,6 +50,11 @@ def getStrategy(main_loop):
                 elif isinstance(position, Position):
                     return position
 
+            def checkedNextStep(self, state, joueur):
+                if self.robot_events[joueur] == EVENT_SUCCEED:
+                    self.robot_events[joueur] = EVENT_WIP
+                    self.robot_states[joueur] = state
+
 
             # ----------Private---------
 
@@ -64,13 +70,21 @@ def getStrategy(main_loop):
                 self.robot_events[joueur] = EVENT_TIMEOUT
                 self.robot_states[joueur] = self._idle
 
+            def _getDeadZone(self, posType):
+                if isinstance(posType, Player):
+                    return 225
+                elif isinstance(posType, Ball):
+                    return 225
+                elif isinstance(posType, Position):
+                    return 225
+
             def _bouger(self, joueur):
                 #TODO: ajuster la deadzone en fonction du type du goal
                 position = self._convertirPosition(self.robot_goals[joueur])
                 player = self.team.players[joueur]
                 dist = geometry.get_distance(player.pose.position, position)
                 print(dist)
-                deadzone = 225  #225 est la deadzone nécessaire pour que le robot ne fonce pas dans la balle
+                deadzone = self._getDeadZone(self.robot_goals[joueur])
 
                 if 0 < dist < deadzone: # si la distance est exactement 0, la position n'est pas bonne
                     self._succeed(joueur)
@@ -84,7 +98,7 @@ def getStrategy(main_loop):
                 #TODO : ajuster la deadzone en fonction du type du goal
                 destination = self._convertirPosition(self.robot_goals[joueur])
                 cible = self._convertirPosition(self.robot_aim[joueur])
-                deadzone = 225  #225 est la deadzone nécessaire pour que le robot ne fonce pas dans la balle
+                deadzone = self._getDeadZone(self.robot_goals[joueur])
                 player = self.team.players[joueur]
                 dist = geometry.get_distance(player.pose.position, destination)
                 angle = m.fabs(geometry.get_angle(player.pose.position, cible) - player.pose.orientation)  #angle between the robot and the ball
@@ -102,25 +116,13 @@ def getStrategy(main_loop):
                     orientation = geometry.get_angle(player.pose.position, cible)
                     command = Command.MoveToAndRotate(player, self.team, Pose(destination, orientation))
                     self._send_command(command)
-                """
-                if(dist > deadzone and angle > 0.09):    #0.087 rad = 5 deg : marge d'erreur de l'orientation
-                    print("allo1")
-                    orientation = geometry.get_angle(player.pose.position, cible)
-                    command = Command.MoveToAndRotate(player, self.team, Pose(destination, orientation))
-                    self._send_command(command)
-                elif(dist > deadzone and angle <= 0.09):
-                    print("allo2")
-                    command = Command.MoveTo(player, self.team, destination)
-                    self._send_command(command)
-                elif(dist <= deadzone and angle > 0.09):
-                    print("allo3")
-                    orientation = geometry.get_angle(player.pose.position, cible)
-                    command = Command.Rotate(player, self.team, orientation)
-                    self._send_command(command)
-                else:
-                    print("allo4")
-                    self._succeed(joueur)
-                """
+
+            def _lancer(self, joueur):
+                self._bougerPlusAim(joueur)
+                self.checkedNextStep(self._lancer_p2, joueur)
+
+            def __lancer_p2(self, joueur):
+                self._fail(joueur)
 
             def _idle(self, joueur):
                 player = self.team.players[joueur]
@@ -144,7 +146,17 @@ def getStrategy(main_loop):
                 self._fail(joueur2)
 
             def lancer(self, joueur, cible, force=1):
-                self._fail(joueur)
+                robot = self._convertirPosition(self.team.players[joueur])
+                self.robot_kick_force[joueur] = force
+                cible = self._convertirPosition(cible)
+                balle = self.field.ball
+                deadzone = self._getDeadZone(balle)
+                angle = m.atan2(robot.y-cible.y,
+                                robot.x-cible.x)
+                x = balle.position.x + deadzone*m.cos(angle)
+                y = balle.position.y + deadzone*m.sin(angle)
+                position = Position(x, y)
+                self.bouger(joueur, position, cible=self.field.ball)
 
             def chercher_balle(self, joueur):
                 ballPosition = self.field.ball
