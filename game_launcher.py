@@ -76,14 +76,13 @@ def getStrategy(main_loop):
                 elif isinstance(posType, Ball):
                     return 225
                 elif isinstance(posType, Position):
-                    return 225
+                    return 50
 
             def _bouger(self, joueur):
                 #TODO: ajuster la deadzone en fonction du type du goal
                 position = self._convertirPosition(self.robot_goals[joueur])
                 player = self.team.players[joueur]
                 dist = geometry.get_distance(player.pose.position, position)
-                print(dist)
                 deadzone = self._getDeadZone(self.robot_goals[joueur])
 
                 if 0 < dist < deadzone: # si la distance est exactement 0, la position n'est pas bonne
@@ -118,11 +117,28 @@ def getStrategy(main_loop):
                     self._send_command(command)
 
             def _lancer(self, joueur):
+                self.robot_goals[joueur] = self._lance_position(joueur)
                 self._bougerPlusAim(joueur)
                 self.checkedNextStep(self._lancer_p2, joueur)
 
-            def __lancer_p2(self, joueur):
-                self._fail(joueur)
+            def _lancer_p2(self, joueur):
+                self.robot_goals[joueur] = self.field.ball
+                player = self.team.players[joueur]
+                command = Command.Kick(player, self.team, 8)
+                self._send_command(command)
+
+            def _lance_position(self, joueur):
+                robot = self._convertirPosition(self.team.players[joueur])
+                balle = self._convertirPosition(self.field.ball)
+                cible = self._convertirPosition(self.robot_aim[joueur])
+                dist = geometry.get_distance(robot, balle)
+                lim_dist = dist*0.75
+                deadzone = lim_dist if lim_dist > 125 else 0
+                angle = m.atan2(robot.y-cible.y,
+                                robot.x-cible.x)
+                x = balle.x + deadzone*m.cos(angle)
+                y = balle.y + deadzone*m.sin(angle)
+                return Position(x, y)
 
             def _idle(self, joueur):
                 player = self.team.players[joueur]
@@ -140,23 +156,18 @@ def getStrategy(main_loop):
                     self.robot_states[joueur] = self._bougerPlusAim
                 else:
                     self.robot_states[joueur] = self._bouger
+                self.robot_events[joueur] = EVENT_WIP
 
             def passe(self, joueur1, joueur2):
                 self._fail(joueur1)
                 self._fail(joueur2)
 
-            def lancer(self, joueur, cible, force=1):
-                robot = self._convertirPosition(self.team.players[joueur])
+            def lancer(self, joueur, cible, force=5):
                 self.robot_kick_force[joueur] = force
-                cible = self._convertirPosition(cible)
-                balle = self.field.ball
-                deadzone = self._getDeadZone(balle)
-                angle = m.atan2(robot.y-cible.y,
-                                robot.x-cible.x)
-                x = balle.position.x + deadzone*m.cos(angle)
-                y = balle.position.y + deadzone*m.sin(angle)
-                position = Position(x, y)
-                self.bouger(joueur, position, cible=self.field.ball)
+                position = self._lance_position(joueur)
+                self.bouger(joueur, position, cible=cible)
+                self.robot_states[joueur] = self._lancer
+                self.robot_events[joueur] = EVENT_WIP
 
             def chercher_balle(self, joueur):
                 ballPosition = self.field.ball
