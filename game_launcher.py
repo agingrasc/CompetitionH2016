@@ -27,7 +27,7 @@ def getStrategy(main_loop):
                 self.robot_goals = [Position() for robot in team.players] #Position vide. Position visée
                 self.robot_aim = [Position() for robot in team.players] #Position vide. Position visée
                 self.robot_kick_force = [0 for robot in team.players] #Force de kick
-                self.robot_kick_times = [0 for robot in team.players] #Force de kick
+                self.robot_kick_times = [0 for robot in team.players] #Nombre de kick
 
             def on_start(self):
                 main_loop(self, self.field, self.robot_events, self.team, self.opponent_team)
@@ -106,11 +106,9 @@ def getStrategy(main_loop):
                 if(dist <= deadzone and angle <= 0.09):  #0.087 rad = 5 deg : marge d'erreur de l'orientation
                     self._succeed(joueur)
                 elif(dist > deadzone and angle <= 0.09):
-                    print("no good placement ", dist, type(self.robot_goals[joueur]).__name__)
                     command = Command.MoveTo(player, self.team, destination)
                     self._send_command(command)
                 elif(dist <= deadzone and angle > 0.09):
-                    print("no good angle")
                     orientation = geometry.get_angle(player.pose.position, cible)
                     command = Command.Rotate(player, self.team, orientation)
                     self._send_command(command)
@@ -126,7 +124,6 @@ def getStrategy(main_loop):
                 self.checkedNextStep(self._lancer_p2, joueur)
 
             def _lancer_p2(self, joueur):
-                print("kick")
                 self.robot_goals[joueur] = self.field.ball
                 player = self.team.players[joueur]
                 if self.robot_kick_times[joueur] > 0:
