@@ -44,6 +44,8 @@ def getStrategy(main_loop):
                 self.on_start()
 
             def _convertirPosition(self, position):
+                """ position represente un objet (player, ball, etc.), on extrait
+                la position et on la retourne """
                 if isinstance(position, Player):
                     return position.pose.position
                 elif isinstance(position, Ball):
