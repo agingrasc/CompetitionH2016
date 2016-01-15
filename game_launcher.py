@@ -188,8 +188,23 @@ def getStrategy(main_loop):
                 ballPosition = self.field.ball
                 self.bouger(joueur, ballPosition, cible=self.field.ball)
 
-            def positioner_entre_deux_ennemis(self, joueur, enemi1, enemi2):
-                self._fail(joueur)
+            def positionner_entre_deux_ennemis(self, joueur, enemi1, enemi2, cible=None):
+                position1 = self.opponent_team.players[enemi1].pose.position
+                position2 = self.opponent_team.players[enemi2].pose.position
+
+                x = (position1.x + position2.x)/2
+                y = (position1.y + position2.y)/2
+                position = Position(x,y)
+                self.bouger(joueur, position, cible)
+
+            def positionner_entre_ami_et_enemi(self, joueur, ami, enemi, cible=None):
+                position1 = self.team.players[ami].pose.position
+                position2 = self.opponent_team.players[enemi].pose.position
+
+                x = (position1.x + position2.x)/2
+                y = (position1.y + position2.y)/2
+                position = Position(x,y)
+                self.bouger(joueur, position, cible)
 
     return DefiStrategy
 
