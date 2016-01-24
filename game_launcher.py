@@ -29,6 +29,8 @@ def getStrategy(main_loop):
                 self.robot_kick_force = [0 for robot in team.players] #Force de kick
                 self.robot_kick_times = [0 for robot in team.players] #Nombre de kick
 
+                self.old_ball_speed = 0
+
             def on_start(self):
                 main_loop(self, self.field, self.robot_events, self.team, self.opponent_team)
                 self.execute()
@@ -121,17 +123,22 @@ def getStrategy(main_loop):
                 self.robot_goals[joueur] = self._lance_position(joueur)
                 self._bougerPlusAim(joueur)
                 self.robot_kick_times[joueur] = 100
+                self.old_ball_speed = m.sqrt(self.field.ball.velocity.x**2 + self.field.ball.velocity.y**2)
                 self.checkedNextStep(self._lancer_p2, joueur)
 
             def _lancer_p2(self, joueur):
                 self.robot_goals[joueur] = self.field.ball
                 player = self.team.players[joueur]
+                new_ball_speed = m.sqrt(self.field.ball.velocity.x**2 + self.field.ball.velocity.y**2)
                 if self.robot_kick_times[joueur] > 0:
                     command = Command.Kick(player, self.team, 8)
                     self._send_command(command)
                     self.robot_kick_times[joueur] -= 1
-                else:
+                    self.old_ball_speed = new_ball_speed
+                elif new_ball_speed > 1000:
                     self._succeed(joueur)
+                else:
+                    self._fail(joueur)
 
             def _lance_position(self, joueur):
                 player = self.team.players[joueur]
