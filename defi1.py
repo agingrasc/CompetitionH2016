@@ -16,9 +16,5 @@ class Defi1(object):
             #coach.chercher_balle(1)
             coach.lancer(2, Position(-3000,0))
 
-
-
 defi = Defi1()
 game_launcher.start_game(defi.boucle_principale)
-
-
