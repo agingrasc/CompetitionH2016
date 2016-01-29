@@ -6,6 +6,8 @@ from RULEngine.Game.Player import Player
 from RULEngine.Game.Ball import Ball
 from RULEngine.Command import Command
 from RULEngine.Framework import Framework
+from RULEngine.Util.constant import *
+from util import Collision
 import math as m
 
 import sys, time
@@ -30,6 +32,7 @@ def getStrategy(main_loop):
                 self.robot_kick_times = [0 for robot in team.players] #Nombre de kick
 
                 self.old_ball_speed = 0
+                self.collider = Collision(team.players + opponent_team.players)
 
             def on_start(self):
                 main_loop(self, self.field, self.robot_events, self.team, self.opponent_team)
@@ -168,6 +171,7 @@ def getStrategy(main_loop):
                 command = Command.MoveToAndRotate(player, self.team, pose)
                 self._send_command(command)
 
+
             # ----------Public----------
             def bouger(self, joueur, position, cible=None):
                 assert(isinstance(joueur, int))
@@ -212,6 +216,10 @@ def getStrategy(main_loop):
                 y = (position1.y + position2.y)/2
                 position = Position(x,y)
                 self.bouger(joueur, position, cible)
+
+            def collision(self, pos):
+                self.collider = Collision(self.team.players + self.opponent_team.players)
+                return self.collider.collision(pos)
 
     return DefiStrategy
 
