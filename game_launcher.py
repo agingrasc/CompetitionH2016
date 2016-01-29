@@ -30,6 +30,7 @@ def getStrategy(main_loop):
                 self.robot_aim = [Position() for robot in team.players] #Position vide. Position visée
                 self.robot_kick_force = [0 for robot in team.players] #Force de kick
                 self.robot_kick_times = [0 for robot in team.players] #Nombre de kick
+                self.robot_pass_target = [0 for robot in team.players] #Robot à qui faire la passe
 
                 self.old_ball_speed = 0
                 self.collider = Collision(team.players + opponent_team.players)
@@ -109,13 +110,12 @@ def getStrategy(main_loop):
                 player = self.team.players[joueur]
                 dist = geometry.get_distance(player.pose.position, destination)
                 angle = m.fabs(geometry.get_angle(player.pose.position, cible) - player.pose.orientation)  #angle between the robot and the ball
-
-                if(dist <= deadzone and angle <= 0.09):  #0.087 rad = 5 deg : marge d'erreur de l'orientation
+                if(dist <= deadzone and angle <= 0.01):  #0.087 rad = 5 deg : marge d'erreur de l'orientation
                     self._succeed(joueur)
-                elif(dist > deadzone and angle <= 0.09):
+                elif(dist > deadzone and angle <= 0.01):
                     command = Command.MoveTo(player, self.team, destination)
                     self._send_command(command)
-                elif(dist <= deadzone and angle > 0.09):
+                elif(dist <= deadzone and angle > 0.01):
                     orientation = geometry.get_angle(player.pose.position, cible)
                     command = Command.Rotate(player, self.team, orientation)
                     self._send_command(command)
@@ -123,6 +123,27 @@ def getStrategy(main_loop):
                     orientation = geometry.get_angle(player.pose.position, cible)
                     command = Command.MoveToAndRotate(player, self.team, Pose(destination, orientation))
                     self._send_command(command)
+
+            def _passer(self, joueur):
+                self.robot_goals[joueur] = self._lance_position(joueur)
+                coequipier = self.robot_pass_target[joueur]
+                self._bougerPlusAim(joueur)
+                self.robot_states[joueur] = self._passer
+                self.robot_kick_times[joueur] = 100
+                self.old_ball_speed = m.sqrt(self.field.ball.velocity.x**2 + self.field.ball.velocity.y**2)
+                if self.robot_events[joueur] == EVENT_SUCCEED and self.robot_events[coequipier] == EVENT_SUCCEED:
+                    self.robot_events[joueur] = EVENT_WIP
+                    self.robot_states[joueur] = self._lancer_p2
+                    self.robot_events[coequipier] = EVENT_WIP
+                    self.robot_states[coequipier] = self._recevoirPasse
+
+            def _recevoirPasse(self, joueur):
+                receveur = self.team.players[joueur].pose.position
+                balle = self.field.ball.position
+                a = self.field.ball.velocity.y/self.field.ball.velocity.x
+                b = balle.y - a*balle.x
+                self.robot_goals[joueur] = Position(receveur.x, a*receveur.x+b)
+                self._bougerPlusAim(joueur)
 
             def _lancer(self, joueur):
                 self.robot_goals[joueur] = self._lance_position(joueur)
@@ -136,7 +157,7 @@ def getStrategy(main_loop):
                 player = self.team.players[joueur]
                 new_ball_speed = m.sqrt(self.field.ball.velocity.x**2 + self.field.ball.velocity.y**2)
                 if self.robot_kick_times[joueur] > 0:
-                    command = Command.Kick(player, self.team, 8)
+                    command = Command.Kick(player, self.team, self.robot_kick_force[joueur])
                     self._send_command(command)
                     self.robot_kick_times[joueur] -= 1
                     self.old_ball_speed = new_ball_speed
@@ -157,7 +178,7 @@ def getStrategy(main_loop):
                 if angle > 0.3:
                     deadzone = max(deadzone, 200)
 
-                print(deadzone)
+                #print(deadzone)
 
                 angle = m.atan2(robot.y-cible.y,
                                 robot.x-cible.x)
@@ -174,8 +195,15 @@ def getStrategy(main_loop):
 
             # ----------Public----------
             def bouger(self, joueur, position, cible=None):
+                """
+                :param joueur: Le numéro du robot
+                :param position: La position à atteindre
+                :param cible: La cible du robot
+                :return: Rien, cette fonction modifie l'état des robots
+                """
                 assert(isinstance(joueur, int))
-                assert(isinstance(position, (Position, Player, Ball, int)))
+                assert(isinstance(position, (Position, Player, Ball)))
+                assert(isinstance(cible, (Position, Player, Ball)))
                 self.robot_goals[joueur] = position
                 if cible:
                     self.robot_aim[joueur] = cible
@@ -184,11 +212,37 @@ def getStrategy(main_loop):
                     self.robot_states[joueur] = self._bouger
                 self.robot_events[joueur] = EVENT_WIP
 
-            def passe(self, joueur1, joueur2):
-                self._fail(joueur1)
-                self._fail(joueur2)
+            def passe(self, joueur1, joueur2, force=3):
+                """
+                :param joueur1: Le numéro du robot affectuant la passe
+                :param joueur2: Le numéro du robot recevant la passe
+                :param force: La force de la passe
+                :return: Rien, cette fonction modifie l'état des robots
+                """
+                assert(isinstance(joueur1, int))
+                assert(isinstance(joueur2, int))
+                assert(isinstance(force, int))
+                self.robot_kick_force[joueur1] = force
+                self.robot_pass_target[joueur1] = joueur2
+                self.robot_pass_target[joueur2] = joueur1
+                position = self._lance_position(joueur1)
+                self.bouger(joueur1, position, cible=self.team.players[joueur2])
+                self.bouger(joueur2, self.team.players[joueur2].pose.position, cible=self.field.ball.position)
+                self.robot_states[joueur1] = self._passer
+                self.robot_events[joueur1] = EVENT_WIP
+                self.robot_states[joueur2] = self._bougerPlusAim
+                self.robot_events[joueur2] = EVENT_WIP
 
-            def lancer(self, joueur, cible, force=5):
+            def lancer(self, joueur, cible, force=3):
+                """
+                :param joueur: Le numéro du joueur affectuant le lancer
+                :param cible: La cible du robot
+                :param force: La force du lancer
+                :return: Rien, cette fonction modifie l'état des robots
+                """
+                assert(isinstance(joueur, int))
+                assert(isinstance(cible, (Position, Player, Ball)))
+                assert(isinstance(force, int))
                 self.robot_kick_force[joueur] = force
                 position = self._lance_position(joueur)
                 self.bouger(joueur, position, cible=cible)
@@ -196,21 +250,47 @@ def getStrategy(main_loop):
                 self.robot_events[joueur] = EVENT_WIP
 
             def chercher_balle(self, joueur):
+                """
+                :param joueur: Le numéro du robot
+                """
+                assert(isinstance(joueur, int))
                 ballPosition = self.field.ball
                 self.bouger(joueur, ballPosition, cible=self.field.ball)
 
-            def positionner_entre_deux_ennemis(self, joueur, enemi1, enemi2, cible=None):
-                position1 = self.opponent_team.players[enemi1].pose.position
-                position2 = self.opponent_team.players[enemi2].pose.position
+            def positionner_entre_deux_ennemis(self, joueur, ennemi1, ennemi2, cible=None):
+                """
+                :param joueur: Le numéro du robot à déplacer
+                :param ennemi1: Le numéro du premier robot ennemi
+                :param ennemi2: Le numéro du deuxième robot ennemi
+                :param cible: La cible du robot à déplacer
+                :return: Rien, cette fonction modifie l'état des robots
+                """
+                assert(isinstance(joueur, int))
+                assert(isinstance(ennemi1, int))
+                assert(isinstance(ennemi2, int))
+                assert(isinstance(cible, (Position, Player, Ball)))
+                position1 = self.opponent_team.players[ennemi1].pose.position
+                position2 = self.opponent_team.players[ennemi2].pose.position
 
                 x = (position1.x + position2.x)/2
                 y = (position1.y + position2.y)/2
                 position = Position(x,y)
                 self.bouger(joueur, position, cible)
 
-            def positionner_entre_ami_et_enemi(self, joueur, ami, enemi, cible=None):
+            def positionner_entre_ami_et_ennemi(self, joueur, ami, ennemi, cible=None):
+                """
+                :param joueur: Le numéro du robot à déplacer
+                :param ami: Le numéro du robot ami
+                :param enemi: Le numéro du robot ennemi
+                :param cible: La cible du robot à déplacer
+                :return: Rien, cette fonction modifie l'état des robots
+                """
+                assert(isinstance(joueur, int))
+                assert(isinstance(ami, int))
+                assert(isinstance(ennemi, int))
+                assert(isinstance(cible, (Position, Player, Ball)))
                 position1 = self.team.players[ami].pose.position
-                position2 = self.opponent_team.players[enemi].pose.position
+                position2 = self.opponent_team.players[ennemi].pose.position
 
                 x = (position1.x + position2.x)/2
                 y = (position1.y + position2.y)/2
