@@ -17,7 +17,7 @@ EVENT_TIMEOUT = "timeout"
 EVENT_FAIL = "rate"
 EVENT_WIP = "inprogress"
 
-def getStrategy(main_loop):
+def getStrategy(defi):
     class DefiStrategy(Strategy):
             def __init__(self, field, referee, team, opponent_team, is_team_yellow=False):
                 Strategy.__init__(self, field, referee, team, opponent_team)
@@ -34,9 +34,12 @@ def getStrategy(main_loop):
 
                 self.old_ball_speed = 0
                 self.collider = Collision(team.players + opponent_team.players)
+                self.collision_warning = []
 
             def on_start(self):
-                main_loop(self, self.field, self.robot_events, self.team, self.opponent_team)
+                defi.etat(self, self.field, self.robot_events, self.team.players, self.opponent_team.players)
+                self.collider = Collision(team.players + opponent_team.players)
+                self.collision_warning = self.collider.check_collision()
                 self.execute()
 
             def execute(self):
@@ -203,9 +206,9 @@ def getStrategy(main_loop):
                 """
                 assert(isinstance(joueur, int))
                 assert(isinstance(position, (Position, Player, Ball)))
-                assert(isinstance(cible, (Position, Player, Ball)))
                 self.robot_goals[joueur] = position
                 if cible:
+                    assert(isinstance(cible, (Position, Player, Ball)))
                     self.robot_aim[joueur] = cible
                     self.robot_states[joueur] = self._bougerPlusAim
                 else:
@@ -308,3 +311,26 @@ def start_game(main_loop):
 
     framework = Framework()
     framework.start_game(getStrategy(main_loop))
+
+
+class Defi(object):
+
+    def __init__(self):
+        self.etat = self.initialiser
+        self.timeout = time.time() + 9999999999
+
+    def prochain_etat(self, prochain_etat, timeout=999999, timeout_fcn=None):
+        if timeout_fcn:
+            self._timeout_fcn = timeout_fcn
+        else:
+            self._timeout_fcn = prochain_etat
+
+        self._prochain_etat = prochain_etat
+        self.timeout = time.time() + timeout*1000
+        self.etat = self._attendre
+
+    def _attendre(self, coach, terrain, etats, equipe_bleu, equipe_jaune):
+        if not any(event == EVENT_WIP for event in coach.robot_events) :
+            self.etat = self._prochain_etat
+        elif time.time() > self.timeout:
+            self.etat = self._timeout_fcn
